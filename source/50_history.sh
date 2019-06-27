@@ -10,6 +10,6 @@ shopt -s histappend
 # entries will be erased (leaving the most recent entry).
 export HISTCONTROL="ignoreboth"
 # Lots o' history.
-export HISTSIZE=1000
-export HISTFILESIZE=2000
+export HISTSIZE=1000000
+export HISTFILESIZE=2000000
 
