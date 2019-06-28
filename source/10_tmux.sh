@@ -33,16 +33,3 @@ function run_in_fresh_tmux_window() {
   fi
 }
 
-# Open editor and shell in new window using main-vertical layout.
-# Usage: qq [num-panes] [working-directory] [...other-args]
-function qq() {
-  local panes=1; [[ "$1" =~ ^[0-9]+$ ]] && panes=$1 && shift
-  local dir="$PWD"; [[ -d "$1" ]] && dir="$(cd "$1" && pwd)" && shift
-  local win=$(tmux new-window -P -a -c "$dir" -n "$(basename "$dir")")
-  n_times $panes tmux split-window -t $win -c "$dir"
-  tmux select-layout -t $win main-vertical
-  tmux select-pane -t $win
-  tmux send-keys -t $win "$EDITOR $@" Enter
-}
-alias q2='qq 2'
-alias q3='qq 3'
