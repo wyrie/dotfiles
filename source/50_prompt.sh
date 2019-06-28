@@ -1,153 +1,131 @@
-# My awesome bash prompt
-#
-# Copyright (c) 2012 "Cowboy" Ben Alman
-# Licensed under the MIT license.
-# http://benalman.com/about/license/
-#
-# Example:
-# [master:!?][cowboy@CowBook:~/.dotfiles]
-# [11:14:45] $
-#
-# Read more (and see a screenshot) in the "Prompt" section of
-# https://github.com/cowboy/dotfiles
+source "$HOME/bin/git-prompt.sh"
 
-# Abort if a prompt is already defined.
-[[ "$PROMPT_COMMAND" ]] && return
+GIT_PS1_SHOWCOLORHINTS=1
 
-# ANSI CODES - SEPARATE MULTIPLE VALUES WITH ;
-#
-#  0  reset          4  underline
-#  1  bold           7  inverse
-#
-# FG  BG  COLOR     FG  BG  COLOR
-# 30  40  black     34  44  blue
-# 31  41  red       35  45  magenta
-# 32  42  green     36  46  cyan
-# 33  43  yellow    37  47  white
+red=$'\e[1;31m'
+green=$'\e[32m'
+yellow=$'\e[33m'
+blue=$'\e[34m'
+magenta=$'\e[35m'
+cyan=$'\e[36m'
+gray=$'\e[38;5;242m'
+#gray=$'\e[30m'
+end=$'\e[0m'
 
-if [[ ! "${__prompt_colors[@]}" ]]; then
-  __prompt_colors=(
-    "36" # information color
-    "37" # bracket color
-    "31" # error color
-  )
+function nonzero_return() {
+	RETVAL=$?
+  [[ $RETVAL -ne 0 ]] && color="$red" || color="$green"
+  printf "${color}$RETVAL${end}"
+}
 
-  if [[ "$SSH_TTY" ]]; then
-    # connected via ssh
-    __prompt_colors[0]="32"
-  elif [[ "$USER" == "root" ]]; then
-    # logged in as root
-    __prompt_colors[0]="35"
+function _user() {
+  [[ ${EUID} == 0 ]] && color="$red" || color="$yellow"
+  printf "${color}${USER}${end}"
+}
+
+function _git_prompt() {
+  shopt -s nocasematch
+  local git_status="`git status -unormal 2>&1`"
+  if ! [[ "$git_status" =~ Not\ a\ git\ repo ]]; then
+    if [[ "$git_status" =~ nothing\ to\ commit ]]; then
+      color="$green"
+    elif [[ "$git_status" =~ nothing\ added\ to\ commit\ but\ untracked\ files\ present ]]; then
+      color="$red"
+    else
+      color="$yellow"
+    fi
+     printf "${color}$(__git_ps1)${end}"
   fi
-fi
-
-# Inside a prompt function, run this alias to setup local $c0-$c9 color vars.
-alias __prompt_get_colors='__prompt_colors[9]=; local i; for i in ${!__prompt_colors[@]}; do local c$i="\[\e[0;${__prompt_colors[$i]}m\]"; done'
-
-# Exit code of previous command.
-function __prompt_exit_code() {
-  __prompt_get_colors
-  [[ $1 != 0 ]] && echo " $c2$1$c9"
 }
 
-# Git status.
-function __prompt_git() {
-  __prompt_get_colors
-  local status branch flags
-  status="$(git status 2>/dev/null)"
-  [[ $? != 0 ]] && return 1;
-  branch="$(echo "$status" | awk '/# Initial commit/ {print "(init)"}')"
-  [[ "$branch" ]] || branch="$(echo "$status" | awk '/# On branch/ {print $4}')"
-  [[ "$branch" ]] || branch="$(git branch | perl -ne '/^\* \(detached from (.*)\)$/ ? print "($1)" : /^\* (.*)/ && print $1')"
-  flags="$(
-    echo "$status" | awk 'BEGIN {r=""} \
-        /^(# )?Changes to be committed:$/        {r=r "+"}\
-        /^(# )?Changes not staged for commit:$/  {r=r "!"}\
-        /^(# )?Untracked files:$/                {r=r "?"}\
-      END {print r}'
-  )"
-  __prompt_vcs_info=("$branch" "$flags")
-}
+# outputs name and status of vagrant machine if passed path is child of a
+# vagrant project
+function vagrant_local_status() {
+  # https://github.com/monochromegane/vagrant-global-status
+  local VGS="vagrant-global-status"
 
-# hg status.
-function __prompt_hg() {
-  __prompt_get_colors
-  local summary branch bookmark flags
-  summary="$(hg summary 2>/dev/null)"
-  [[ $? != 0 ]] && return 1;
-  branch="$(echo "$summary" | awk '/branch:/ {print $2}')"
-  bookmark="$(echo "$summary" | awk '/bookmarks:/ {print $2}')"
-  flags="$(
-    echo "$summary" | awk 'BEGIN {r="";a=""} \
-      /(modified)/     {r= "+"}\
-      /(unknown)/      {a= "?"}\
-      END {print r a}'
-  )"
-  __prompt_vcs_info=("$branch" "$bookmark" "$flags")
-}
+  # note: a fully resolved path (no symlinks) is required because the path that
+  # vagrant-global-status outputs also resolves symlinks.
+  local TARGET_PATH=""
 
-# SVN info.
-function __prompt_svn() {
-  __prompt_get_colors
-  local info last current
-  info="$(svn info . 2> /dev/null)"
-  [[ ! "$info" ]] && return 1
-  last="$(echo "$info" | awk '/Last Changed Rev:/ {print $4}')"
-  current="$(echo "$info" | awk '/Revision:/ {print $2}')"
-  __prompt_vcs_info=("$last" "$current")
-}
+  # this function accepts a single (optional) argument, the path to check
+  # against vagrant-global-status.
+  if [ $# -lt 1 ]; then
+    # resolve symlinks of current dir
+    TARGET_PATH="`pwd -P`"
 
-# Maintain a per-execution call stack.
-__prompt_stack=()
-trap '__prompt_stack=("${__prompt_stack[@]}" "$BASH_COMMAND")' DEBUG
-
-function __prompt_command() {
-  local i exit_code=$?
-  # If the first command in the stack is __prompt_command, no command was run.
-  # Set exit_code to 0 and reset the stack.
-  [[ "${__prompt_stack[0]}" == "__prompt_command" ]] && exit_code=0
-  __prompt_stack=()
-
-  # Manually load z here, after $? is checked, to keep $? from being clobbered.
-  [[ "$(type -t _z)" ]] && _z --add "$(pwd -P 2>/dev/null)" 2>/dev/null
-
-  # While the simple_prompt environment var is set, disable the awesome prompt.
-  [[ "$simple_prompt" ]] && PS1='\n$ ' && return
-
-  __prompt_get_colors
-  # http://twitter.com/cowboy/status/150254030654939137
-  PS1="\n"
-  __prompt_vcs_info=()
-  # git: [branch:flags]
-  __prompt_git || \
-  # hg:  [branch:bookmark:flags]
-  __prompt_hg || \
-  # svn: [repo:lastchanged]
-  __prompt_svn
-  # Iterate over all vcs info parts, outputting an escaped var name that will
-  # be interpolated automatically. This ensures that malicious branch names
-  # can't execute arbitrary commands. For more info, see this PR:
-  # https://github.com/cowboy/dotfiles/pull/68
-  if [[ "${#__prompt_vcs_info[@]}" != 0 ]]; then
-    PS1="$PS1$c1[$c0"
-    for i in "${!__prompt_vcs_info[@]}"; do
-      if [[ "${__prompt_vcs_info[i]}" ]]; then
-        [[ $i != 0 ]] && PS1="$PS1$c1:$c0"
-        PS1="$PS1\${__prompt_vcs_info[$i]}"
-      fi
-    done
-    PS1="$PS1$c1]$c9"
+  # check to see if the passed dir exists
+  elif [[ $# -eq 1 && -d $1 ]]; then
+    # resolve symlinks of passed dir
+    TARGET_PATH="$( cd $1 ; pwd -P )"
+  else
+    return 1
   fi
-  # misc: [cmd#:hist#]
-  # PS1="$PS1$c1[$c0#\#$c1:$c0!\!$c1]$c9"
-  # path: [user@host:path]
-  PS1="$PS1$c1[$c0\u$c1@$c0\h$c1:$c0\w$c1]$c9"
-  PS1="$PS1\n"
-  # date: [HH:MM:SS]
-  PS1="$PS1$c1[$c0$(date +"%H$c1:$c0%M$c1:$c0%S")$c1]$c9"
-  # exit code: 127
-  PS1="$PS1$(__prompt_exit_code "$exit_code")"
-  PS1="$PS1 \$ "
+
+  # return immediately if we can't find the tool in $PATH
+  if [ "`which $VGS`" = "" ]; then
+    return 1
+  fi
+
+  # capture output of vagrant-global-status. we'll need to process it a few
+  # more times later.
+  local VAGRANT_STATUS="`$VGS`"
+
+  # extract dir paths (5th col)
+  local ALL_VM_PATHS=$(echo "$VAGRANT_STATUS" | awk '{ print $5 }')
+
+  # holds the path to the VM (a parent of TARGET_PATH)
+  local MATCHED_VM_PATH=""
+
+  # attempt to match one one of the paths with TARGET_PATH
+  for p in $ALL_VM_PATHS; do
+    # test if TARGET_PATH is a child dir of a candidate path by attempting to
+    # remove candidate path from begnning of TARGET_PATH, (re-)combining with
+    # candiate path, and checking to see if it's identical to TARGET_PATH.
+    if [ "${p}${TARGET_PATH##$p}" = "$TARGET_PATH" ]; then
+      MATCHED_VM_PATH=$p
+      break
+    fi
+  done
+
+  # bail if we didn't match anything
+  if [ "$MATCHED_VM_PATH" = "" ]; then
+    # this is still considered a success
+    return 0
+  fi
+
+  # holds entire status line(s). we'll process it later
+  local MATCHED_VM=$(echo "$VAGRANT_STATUS" | grep $MATCHED_VM_PATH)
+
+  # count the number of VMs we've matched, stripping out leading spaces from
+  # wc output
+  local NUM_VMS=$(echo $MATCHED_VM | wc -l | sed -e 's/ //g')
+
+  # FIXME: no multi-machine vagrant right now.
+  # https://docs.vagrantup.com/v2/multi-machine/
+  if [ "${NUM_VMS}" = "1" ]; then
+    # for the line that matches, get extract the desired status info
+    local VM_NAME="$(echo $MATCHED_VM | awk '{ print $2}')"
+    local VM_STATUS="$(echo $MATCHED_VM | awk '{ print $4}')"
+
+    # FIXME: make output more succinct. need to account for all status values
+    # (poweroff|running|saved|...)
+    echo ${VM_NAME}:${VM_STATUS}
+  fi
+
+  return 0;
 }
 
-PROMPT_COMMAND="__prompt_command"
+function _vagrant_prompt() {
+   local vagrant_status="$(vagrant_local_status)"
+   if [ "${vagrant_status}" != "" ]; then
+     printf " [${vagrant_status}]"
+   fi
+}
+
+function _prompt_command() {
+  printf "\n$(nonzero_return) ${blue}$(date '+%H:%M:%S')  ${yellow}$(_user)  ${magenta}$(pwd)${end}$(_git_prompt) $(__docker_machine_ps1)${end}\n"
+}
+
+export PROMPT_COMMAND=_prompt_command
+export PS1="\[${gray}\]ʎ \[${end}\]"
