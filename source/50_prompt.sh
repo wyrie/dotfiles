@@ -1,4 +1,4 @@
-source "$HOME/bin/git-prompt.sh"
+source "$DOTFILES/bin/git-prompt.sh"
 
 GIT_PS1_SHOWCOLORHINTS=1
 
