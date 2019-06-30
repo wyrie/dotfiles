@@ -8,31 +8,25 @@ is_osx || return 1
 recipes=(
   ansible
   awscli
-  bash
-  cmatrix
-  coreutils
-  cowsay
-  git
-  git-extras
+  bash-completion
+  cfssl
+  composer
+  gist
   htop-osx
-  hub
-  id3tool
   jq
-  lesspipe
-  man2html
-  mercurial
+  jrnl
+  kubernetes-cli
   nmap
-  postgresql
-  reattach-to-user-namespace
-  sl
-  ssh-copy-id
-  terminal-notifier
-  the_silver_searcher
-  thefuck
+  packer
+  pastebinit
+  ranger
+  terraform
   tmux
-  tmux-xpanes
+  trash
   tree
+  unrar
   wget
+  xz
 )
 
 brew_install_recipes
